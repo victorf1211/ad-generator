@@ -5,9 +5,14 @@
   "type": "module",
   "scripts": {
     "start": "node server.mjs",
-    "build": "rm -rf dist && mkdir -p dist && cp -R public/. dist/"
+    "build": "rm -rf dist && mkdir -p dist && cp -R public/. dist/",
+    "deploy": "wrangler deploy",
+    "preview": "wrangler dev"
   },
   "engines": {
     "node": ">=18"
+  },
+  "devDependencies": {
+    "wrangler": "^4.90.1"
   }
 }
