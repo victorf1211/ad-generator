@@ -1,60 +1,143 @@
-# AI Product Ad Generator
+# Ad Generator — AI E‑Commerce Creative Assistant
 
-本地用 `node server.mjs`。
+A full-stack web app that turns a **single product photo** into **four structured Chinese image prompts** and **four ad-style product images**, aimed at e‑commerce detail pages and campaign creatives.
 
-部署二选一（不要混用同一域名上两套互不认识的配置）：
-
-## A) Cloudflare Workers（`wrangler deploy` / 仓库里的 Workers 集成）
-
-- 使用根目录 **`worker.mjs`** + **`wrangler.jsonc`**：先匹配 **`/api/*`**，其余走静态资源 **`public/`**。
-- 在 Cloudflare 控制台为该 Worker 配置环境变量：**`OPENAI_API_KEY`**（必填）、可选 **`OPENAI_BASE_URL`**、**`OPENAI_TEXT_MODEL`**。
-- 部署：`npm run deploy` 或在 Cloudflare 用 Git 触发 Workers 构建。
-- 本地预览：`npm run preview`（`wrangler dev`）。
-
-## B) Cloudflare Pages
-
-- **Build command:** `npm run build`，**Build output directory:** `dist`，仓库根目录需包含 **`functions/`**（Pages Functions）。
-- 环境变量同上（在 **Pages** 项目里配置，不是 Worker 里）。
-- 本地：`npm run pages:dev`。
+**Portfolio / resume note:** Demonstrates multimodal LLM integration (vision + text), image generation APIs, a small vanilla front end, a Node.js dev server, and production deployment on **Cloudflare** (Workers with static assets or Pages + Functions) with shared serverless API logic.
 
 ---
 
-若线上仍出现 **`/api/...` 404**：说明你打开的域名指向的是 **只有静态资源、没有跑 `worker.mjs` 也没有 Pages Functions** 的那一种部署。请对照上表确认该域名对应的是 **Workers（已含 worker）** 还是 **Pages（已含 functions）**，并在正确的产品里配置密钥后重新部署。
+## Features
 
-## 本地运行
+- **Product image upload** in the browser (base64 to the API).
+- **Four-scene prompt pack** — strict system instructions so the model outputs four labeled sections (图一 … 图四) with layout, typography, and visual direction in Chinese.
+- **Four images** — calls an OpenAI-compatible **images/edits** flow when a product image is present, with **automatic fallback** to **images/generations** if edit fails or the gateway drops multimodal payloads.
+- **Gateway resilience** — tries `/v1/responses`, then falls back to `/v1/chat/completions`, with an optional text-only retry path when the upstream closes on image payloads.
 
-一个本地可跑的小网站：
+---
 
-- 上传产品图
-- 根据你提供的**严格系统 prompt**生成 4 段中文生图提示词（图一～图四）
-- 基于提示词 + 产品图生成 4 张电商广告图（如果“图像编辑”不可用，会自动降级为纯提示词生成）
+## Tech Stack
 
-## 运行
+| Layer | Choice |
+|--------|--------|
+| Front end | HTML, CSS, vanilla JavaScript (`public/`) |
+| Local API + static | Node.js **HTTP** server (`server.mjs`, ES modules) |
+| Production API | **Cloudflare Workers** (`worker.mjs`) *or* **Pages Functions** (`functions/`) |
+| Shared API logic | `lib/openai-api.js`, `lib/handle-api.js` |
+| Tooling | `npm`, **Wrangler** 4.x |
 
-1) 设置环境变量（必填）：
+---
 
-```bash
-export OPENAI_API_KEY="你的key"
+## Architecture (high level)
+
+```text
+Browser (public/)
+    │  POST /api/prompts , POST /api/generate
+    ▼
+┌─────────────────────────────────────────┐
+│  Local: server.mjs                      │
+│  Cloudflare Worker: worker.mjs + ASSETS │
+│  Cloudflare Pages: functions/api/*      │
+└─────────────────────────────────────────┘
+    │  HTTPS to OpenAI-compatible base URL
+    ▼
+  Upstream LLM + image APIs
 ```
 
-可选（默认 `gpt-4.1-mini`）：
+Secrets never ship to the client: **`OPENAI_API_KEY`** lives in **environment variables** (local shell, `.dev.vars` for Wrangler, or Cloudflare dashboard).
+
+---
+
+## Prerequisites
+
+- **Node.js 18+**
+- An **OpenAI-compatible API key** (and base URL if not using the default host).
+
+---
+
+## Local development
 
 ```bash
-export OPENAI_TEXT_MODEL="gpt-4.1-mini"
+cd ad-generator   # or your clone path
+export OPENAI_API_KEY="your-key"   # Windows: set OPENAI_API_KEY=...
+# optional:
+# export OPENAI_BASE_URL="https://your-gateway.example"
+# export OPENAI_TEXT_MODEL="gpt-4.1-mini"
+
+npm install
+npm start          # runs node server.mjs — http://localhost:3000
 ```
 
-2) 启动服务：
+---
 
-```bash
-node server.mjs
+## Environment variables
+
+| Variable | Required | Description |
+|-----------|----------|-------------|
+| `OPENAI_API_KEY` | **Yes** | Bearer token for the upstream API. |
+| `OPENAI_BASE_URL` | No | OpenAI-compatible root URL (no trailing slash). Default matches project config. |
+| `OPENAI_TEXT_MODEL` | No | Text / vision model for prompt generation (default `gpt-4.1-mini`). |
+
+---
+
+## HTTP API
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/api/health` | Liveness check (`{ "ok": true }`). |
+| `POST` | `/api/prompts` | JSON body: `productImageBase64`, `productImageMime` → `{ "prompts": "..." }`. |
+| `POST` | `/api/generate` | JSON body: `prompt`, optional `productImageBase64` / `productImageMime` → `{ imageBase64 \| imageUrl, ... }`. |
+
+---
+
+## Deploy on Cloudflare
+
+Use **one** primary target per hostname so routes and env vars line up.
+
+### Option A — Workers (`wrangler deploy` / Git → Workers)
+
+- Entry: **`worker.mjs`**; static files: **`public/`** via **`ASSETS`** in **`wrangler.jsonc`** (`run_worker_first`: API routes win, then assets).
+- Set **`OPENAI_API_KEY`** (and optional vars) under the Worker → **Settings → Variables**.
+- Deploy: `npm run deploy` or your connected Git pipeline. Preview locally: `npm run preview`.
+
+### Option B — Pages
+
+- **Build command:** `npm run build`  
+- **Output directory:** `dist`  
+- **Pages Functions:** `functions/` (thin handlers calling **`lib/handle-api.js`**).
+- Set the same variables on the **Pages** project, not only on a separate Worker.
+
+---
+
+## Scripts (`package.json`)
+
+| Script | Command |
+|--------|---------|
+| `npm start` | `node server.mjs` |
+| `npm run build` | Copy `public/` → `dist/` for Pages static output |
+| `npm run pages:dev` | Build + `wrangler pages dev dist` |
+| `npm run preview` | `wrangler dev` (Worker + assets) |
+| `npm run deploy` | `wrangler deploy` |
+
+For Wrangler locally, you can use **`.dev.vars`** (git-ignored) with `OPENAI_API_KEY=...`.
+
+---
+
+## Repository layout
+
+```text
+public/           # Front-end assets
+server.mjs        # Local Node server (static + API)
+worker.mjs        # Cloudflare Worker entry (API + ASSETS)
+functions/api/    # Pages Functions (optional Pages deploy)
+lib/              # Shared OpenAI gateway + route handler
+wrangler.jsonc    # Worker + assets config
+example/          # Sample creative assets (optional)
 ```
 
-3) 打开：
+---
 
-`http://localhost:3000`
+## Live demo
 
-## 接口
+https://ad.victorfeng.cc.cd/
 
-- `POST /api/prompts`：根据产品信息生成 4 段提示词
-- `POST /api/generate`：根据提示词（和可选产品图）生成图片（返回 base64）
-
+---
