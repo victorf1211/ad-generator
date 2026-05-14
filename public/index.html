@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>AI 产品广告生成器</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header class="header">
+        <div>
+          <h1>AI 产品广告生成器</h1>
+          <p class="sub">仅上传产品图 → 自动生成4段提示词 → 生成4张广告图</p>
+        </div>
+        <div class="pill">本地测试站</div>
+      </header>
+
+      <section class="card">
+        <h2>1) 上传产品图</h2>
+        <div class="upload">
+          <input id="imageInput" type="file" accept="image/*" />
+          <div class="previewWrap">
+            <img id="preview" alt="预览" />
+            <div id="previewHint" class="hint">建议上传清晰产品图（正面或45度角）。</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="row">
+          <h2>2) 生成提示词</h2>
+          <button id="btnPrompts" class="btn">生成4段提示词</button>
+        </div>
+        <textarea id="prompts" rows="20" placeholder="这里会输出：图一/图二/图三/图四 …"></textarea>
+        <div class="hint">
+          你给的系统 prompt 很严格：这里会尽量只输出4段提示词正文（中文），便于直接喂给生图模型。
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="row">
+          <h2>3) 生成广告图</h2>
+          <button id="btnImages" class="btn btnPrimary">生成4张广告图</button>
+        </div>
+        <div id="status" class="status"></div>
+        <div id="images" class="images"></div>
+      </section>
+
+      <footer class="footer">
+        <div class="hint">
+          环境变量：<code>OPENAI_API_KEY</code>（必填），<code>OPENAI_TEXT_MODEL</code>（可选，默认 gpt-4.1-mini）
+        </div>
+      </footer>
+    </div>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
+
