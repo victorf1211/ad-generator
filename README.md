@@ -1,4 +1,14 @@
-# AI Product Ad Generator (Local)
+# AI Product Ad Generator
+
+本地用 `node server.mjs`；也可部署到 **Cloudflare Pages**（`functions/` 提供 `/api/*`）。
+
+## Cloudflare Pages
+
+1. **Build command:** `npm run build`，**Build output directory:** `dist`。
+2. **Environment variables:** `OPENAI_API_KEY`（必填，Secret）、可选 `OPENAI_BASE_URL`、`OPENAI_TEXT_MODEL`。
+3. 本地预览静态 + Functions：`npm run pages:dev`（密钥可放在 `.dev.vars`）。
+
+## 本地运行
 
 一个本地可跑的小网站：
 

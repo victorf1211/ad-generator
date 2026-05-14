@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node server.mjs",
     "build": "rm -rf dist && mkdir -p dist && cp -R public/. dist/",
+    "pages:dev": "npm run build && wrangler pages dev dist --compatibility-date=2025-05-14",
     "deploy": "wrangler deploy",
     "preview": "wrangler dev"
   },
