@@ -3,6 +3,7 @@ import { stat } from "node:fs/promises";
 import { createReadStream, existsSync, readFileSync } from "node:fs";
 import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { callOpenAIResponses as callOpenAIResponsesShared } from "./lib/openai-api.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = join(__filename, "..");
@@ -120,152 +121,15 @@ function parseImageResult(data) {
   return { imageBase64, imageUrl };
 }
 
-async function callOpenAIResponses({ model, system, userText, imageBase64, imageMime }) {
-  if (!OPENAI_API_KEY) {
-    throw new Error("Missing OPENAI_API_KEY in environment.");
-  }
-
-  const userContent = [];
-  if (userText) {
-    userContent.push({ type: "input_text", text: userText });
-  }
-  if (imageBase64) {
-    userContent.push({
-      type: "input_image",
-      image_url: `data:${imageMime || "image/png"};base64,${imageBase64}`,
-    });
-  }
-  if (!userContent.length) {
-    throw new Error("Missing user input for prompt generation.");
-  }
-
-  const r = await safeFetch(`${OPENAI_BASE_URL}/v1/responses`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-      "Content-Type": "application/json",
+async function callOpenAIResponses(args) {
+  return callOpenAIResponsesShared(
+    {
+      OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+      OPENAI_BASE_URL,
+      OPENAI_TEXT_MODEL: process.env.OPENAI_TEXT_MODEL || "gpt-4.1-mini",
     },
-    body: JSON.stringify({
-      model,
-      input: [
-        { role: "system", content: [{ type: "input_text", text: system }] },
-        { role: "user", content: userContent },
-      ],
-    }),
-  }, "responses");
-
-  const data = await r.json().catch(() => ({}));
-  if (!r.ok) {
-    const msg = data?.error?.message || data?.message || `OpenAI error (${r.status})`;
-    const unsupportedResponsesPath =
-      msg.includes("/v1/responses") ||
-      msg.includes("不支持此 API 路径") ||
-      msg.toLowerCase().includes("not support") ||
-      msg.toLowerCase().includes("unsupported");
-
-    if (!unsupportedResponsesPath) {
-      throw new Error(msg);
-    }
-
-    // Fallback for OpenAI-compatible gateways that only expose chat/completions.
-    const messages = [
-      { role: "system", content: system },
-      {
-        role: "user",
-        content: [
-          ...(userText ? [{ type: "text", text: userText }] : []),
-          ...(imageBase64
-            ? [
-                {
-                  type: "image_url",
-                  image_url: { url: `data:${imageMime || "image/png"};base64,${imageBase64}` },
-                },
-              ]
-            : []),
-        ],
-      },
-    ];
-
-    try {
-      const fallbackResp = await safeFetch(
-        `${OPENAI_BASE_URL}/v1/chat/completions`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${OPENAI_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model,
-            messages,
-          }),
-        },
-        "chat.completions"
-      );
-
-      const fallbackData = await fallbackResp.json().catch(() => ({}));
-      if (!fallbackResp.ok) {
-        const fallbackMsg =
-          fallbackData?.error?.message || fallbackData?.message || `Chat completion error (${fallbackResp.status})`;
-        throw new Error(fallbackMsg);
-      }
-
-      const fallbackText = fallbackData?.choices?.[0]?.message?.content;
-      if (!fallbackText) throw new Error("No content returned from chat/completions.");
-      return fallbackText;
-    } catch (fallbackErr) {
-      const fallbackMsg = fallbackErr?.message || "";
-      const looksLikeGatewayClosed =
-        fallbackMsg.includes("other side closed") ||
-        fallbackMsg.includes("fetch failed") ||
-        fallbackMsg.toLowerCase().includes("socket hang up");
-
-      // Some gateways close connection for multimodal chat payloads.
-      // Retry once with text-only input to avoid hard failure.
-      if (looksLikeGatewayClosed && imageBase64) {
-        const textOnlyMessages = [
-          { role: "system", content: system },
-          {
-            role: "user",
-            content:
-              "请仅输出4段提示词。网关不支持图像输入，请根据常见电商产品图进行合理推理并保持高端广告风格。\n" +
-              (userText || ""),
-          },
-        ];
-        const textOnlyResp = await safeFetch(
-          `${OPENAI_BASE_URL}/v1/chat/completions`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${OPENAI_API_KEY}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              model,
-              messages: textOnlyMessages,
-            }),
-          },
-          "chat.completions(text-only retry)"
-        );
-        const textOnlyData = await textOnlyResp.json().catch(() => ({}));
-        if (!textOnlyResp.ok) {
-          const textOnlyMsg =
-            textOnlyData?.error?.message ||
-            textOnlyData?.message ||
-            `Chat completion text-only error (${textOnlyResp.status})`;
-          throw new Error(textOnlyMsg);
-        }
-        const textOnly = textOnlyData?.choices?.[0]?.message?.content;
-        if (!textOnly) throw new Error("No content returned from chat/completions text-only retry.");
-        return textOnly;
-      }
-
-      throw fallbackErr;
-    }
-  }
-  const text = data?.output_text;
-  if (!text) throw new Error("No output_text returned from OpenAI.");
-  return text;
+    args
+  );
 }
 
 async function callOpenAIImageEdit({ prompt, imageBase64, imageMime }) {
